@@ -1,0 +1,18 @@
+SIMULAÇÃO NO TINKERCAD (Arduino Uno) - LED_ALERTA = (A AND B) OR M
+(O circuito também está em graficos_ou_imagens/circuito_logico.png)
+LINK: https://www.tinkercad.com/things/dNQXK8rG7Jb/editel?returnTo=%2Fdashboard%2Fdesigns%2Fall&sharecode=-vgA3S-WidtoePimPz7FaFDNaTGYiOSognp7nlbset4
+
+Montagem (Arduino Uno + protoboard):
+ - Chave deslizante A -> pino do meio no pino digital 2 | pontas em 5V e GND  [consumo alto]
+ - Chave deslizante B -> pino do meio no pino digital 3 | pontas em 5V e GND  [módulo crítico]
+ - Chave deslizante M -> pino do meio no pino digital 4 | pontas em 5V e GND  [manutenção pendente]
+ - LED vermelho -> pino 13 em série com resistor de 220 Ω, cátodo (perna curta) no GND
+ - Chave para a direita = 1 (5V); para a esquerda = 0 (GND). Nenhuma entrada fica solta.
+
+Código do Arduino:
+const int A = 2, B = 3, M = 4, LED = 13;
+void setup() { pinMode(A, INPUT); pinMode(B, INPUT); pinMode(M, INPUT); pinMode(LED, OUTPUT); }
+void loop() {
+  bool alerta = (digitalRead(A) && digitalRead(B)) || digitalRead(M);  // mesma regra do Python
+  digitalWrite(LED, alerta ? HIGH : LOW);
+}

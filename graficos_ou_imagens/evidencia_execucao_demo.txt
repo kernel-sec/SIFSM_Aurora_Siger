@@ -1,0 +1,125 @@
+##### DEMO SIFSM #####
+
+--- CRUD ---
+CREATE -> id 121
+READ   -> {'id_leitura': 121, 'ciclo': 20, 'id_modulo': 'M02', 'codigo_sensor': 'SNS-M02', 'ocupantes': 4, 'temperatura_c': 21.5, 'umidade_pct': 47.0, 'luminosidade_lux': 150.0, 'consumo_kwh': 7.9, 'status_sensor': 'OK'}
+UPDATE -> consumo agora 8.4
+Tratamento de erros:
+  [ERRO capturado] Umidade deve estar entre 0 e 100 %.
+  [ERRO capturado] Campo numérico inválido ou ausente.
+  [ERRO capturado] Violação de integridade no banco: FOREIGN KEY constraint failed
+DELETE -> removida; pilha tem 3 ações
+Desfeito: leitura 121 restaurada.
+Desfazer (pilha) -> restaurada: True
+
+--- Tabela hash --- {'codigo_sensor': 'SNS-M03', 'id_modulo': 'M03', 'nome': 'Agricultura', 'critico': 1}
+--- Fila ---
+Atendendo: M01 | restam 2
+--- Grafo --- falha M01 afeta: ['M02', 'M03', 'M04', 'M05', 'M06'] | falha M05 afeta: ['M04', 'M06']
+
+--- Regras booleanas ---
+Leitura exemplo (id 113, M06, 14.74 kWh):
+  R1_alerta_consumo: True
+  R2_ligar_iluminacao: True
+  R3_liberar_irrigacao: False
+  R4_bloquear_operacao: False
+
+Expressão booleana:  LED_ALERTA = (A · B) + M
+A = consumo alto | B = módulo crítico | M = manutenção pendente
+ A B M | LED
+ 0 0 0 |  0
+ 0 0 1 |  1
+ 0 1 0 |  0
+ 0 1 1 |  1
+ 1 0 0 |  0
+ 1 0 1 |  1
+ 1 1 0 |  1
+ 1 1 1 |  1
+Circuito: ver graficos_ou_imagens/circuito_logico.png (porta AND -> porta OR -> LED).
+
+--- Simulação ---
+
+Carga total média (do banco): 43.2 kW | carga crítica: 31.0 kW
+Energia gerada em 1 sol  -> numérica (trapézio): 1569.3 kWh | analítica P·T/π: 1569.3 kWh | erro 0.0000 %
+Média da função consumo em 74 h (média de função = ∫f/(b-a)): 43.2 kW
+  A: Normal                          SoC mínimo =  36.8 %  | energia desperdiçada (bateria cheia) =  1880.3 kWh
+  B: Tempestade de poeira            SoC mínimo =   0.0 %  | energia desperdiçada (bateria cheia) =  1043.8 kWh
+  C: Tempestade + corte de cargas    SoC mínimo =   6.7 %  | energia desperdiçada (bateria cheia) =  1141.9 kWh
+Convolução (média móvel 5): desvio-padrão da temperatura 2.25 -> 0.93 °C
+Limitações: carga constante, geração senoidal ideal, sem degradação da bateria nem temperatura.
+
+--- Modelo linear ---
+
+Amostra limpa: 113 leituras (treino 90 / teste 23)
+Correlação com consumo -> potência nominal: 0.46 | ocupantes: 0.81 | temperatura: -0.36
+Regressão SIMPLES  consumo = 4.50 + 0.842·ocupantes  | R²=0.645 RMSE=1.14 MAE=1.00 (teste)
+Regressão MÚLTIPLA consumo = 4.15 + 0.474·potência + 0.824·ocupantes + (-0.160)·temperatura
+                   R²=0.974 R²aj=0.970 RMSE=0.31 MAE=0.25 (teste)
+Interpretação: +1 ocupante => +0.82 kWh; +1 °C => -0.16 kWh (aquecimento menor); +1 kW de potência nominal => +0.47 kWh.
+VIF (multicolinearidade; <5 é aceitável): potência 1.01 | ocupantes 1.03 | temperatura 1.02
+Limitações: dados simulados, 120 pontos, relação assumida linear, sem efeito de hora do dia.
+
+--- Multiagente ---
+Q: Qual o consumo de energia do M03?
+R: Consumo médio de M03: 8.72 kWh (pico 15.21). [Base: Procedimento energia] Em tempestade de poeira, reduzir cargas não críticas (laboratório e comunicação) quando SoC < 30 %. (Recomendação - requer validação humana.)
+   trace: Triador: pontuação {'dados': 0, 'energia': 2, 'ambiental': 0, 'manutencao': 0} -> handoff para agente 'energia' | Agente energia: ferramenta_consumo(M03) | RAG: documento 'Procedimento energia'
+Q: Preveja o consumo do M02
+R: Previsão do consumo de M02 com 3 ocupantes a 22 °C: 7.85 kWh. [Base: Procedimento energia] Em tempestade de poeira, reduzir cargas não críticas (laboratório e comunicação) quando SoC < 30 %. (Recomendação - requer validação humana.)
+   trace: Triador: pontuação {'dados': 1, 'energia': 1, 'ambiental': 0, 'manutencao': 0} -> handoff para agente 'dados' | Agente dados: modelo linear(M02, 3 ocupantes, 22 °C) | RAG: documento 'Procedimento energia'
+Q: Existe sensor com falha?
+R: Há 4 leituras com sensor inválido aguardando manutenção. [Base: Procedimento manutencao] Sensor INVALIDO bloqueia a operação automática e gera chamado de manutenção. (Recomendação - requer validação humana.)
+   trace: Triador: pontuação {'dados': 0, 'energia': 0, 'ambiental': 0, 'manutencao': 2} -> handoff para agente 'manutencao' | Agente manutenção: ferramenta_alertas() | RAG: documento 'Procedimento manutencao'
+Q: Por favor desligar suporte de vida do M06
+R: BLOQUEADO pelo guardrail (ação insegura: 'desligar suporte de vida'). Encaminhado para a tripulação humana.
+   trace: Guardrail ativado
+Q: Qual a receita de bolo?
+R: FORA DO ESCOPO: só respondo sobre energia, ambiente, manutenção e dados da colônia.
+   trace: Guardrail ativado
+
+--- Arquitetura ---
+
+ARQUITETURA COMPUTACIONAL APLICADA AO SIFSM
+- CPU: menus, CRUD, regras booleanas, agentes (poucos dados, muita lógica de controle).
+- GPU/NPU (conceitual): simulação com milhares de cenários e inferência de IA (paralelismo de dados);
+  NPU/TPU consomem menos energia por inferência - importante em uma colônia com energia limitada.
+- Computação heterogênea: cada tarefa na unidade mais eficiente; sensores/regras simples ficam em
+  microcontrolador (Arduino) de baixíssimo consumo.
+- Hierarquia de memória: leituras recentes em RAM/cache (dict, deque); histórico longo no banco (disco).
+  O gargalo costuma ser mover dados (largura de banda), não calcular: por isso agregamos no banco (AVG via SQL).
+- Chiplets/grandes sistemas de IA: citados conceitualmente (modularidade e eficiência energética).
+Medição real neste computador (soma de quadrados de 300 mil números):
+   laço Python = 24.6 ms | NumPy vetorizado = 0.16 ms  -> 150x mais rápido
+   (menos tempo ativo de CPU = menos energia = mais sustentabilidade).
+
+--- Reflexão ---
+
+IMPACTO SUSTENTÁVEL, SOCIAL E DIGITAL DO SIFSM
+1) Uso responsável de recursos: o banco + regra R1 + simulação do SoC mostram, antes de agir,
+   quando o consumo ameaça a bateria; o corte de cargas não críticas evita colapso do módulo crítico.
+2) Simulação reduz desperdício: o cenário "tempestade" testa a decisão no computador, não na colônia.
+3) Cidadania digital: o campo 'ocupantes' é dado sobre pessoas; guardamos só contagem agregada,
+   sem identidade, e o guardrail impede respostas fora do escopo (privacidade e transparência).
+4) Economia dos dados: se dados da tripulação fossem vendidos/usados para vigilância, haveria risco
+   de discriminação e perda de autonomia; por isso minimização + validação humana.
+5) Impacto ambiental da IA/data centers: preferimos regras determinísticas e modelo linear leve
+   (milissegundos, baixo consumo) a modelos gigantes; usar IA pesada só quando necessário.
+6) Inovação com benefícios e riscos: toda recomendação do sistema é sugestão; a decisão final é humana.
+
+========== ANÁLISE DE SUSTENTABILIDADE DA COLÔNIA ==========
+Regras disparadas -> R1 alerta consumo: 9 | R4 bloqueio: 4 | R2 iluminação: 63 | R3 irrigação: 1
+Alertas por prioridade (heap, 5 primeiros):
+   [CRÍTICO] M01 ciclo 3: consumo 8.2 kWh
+   [CRÍTICO] M01 ciclo 4: consumo 8.0 kWh
+   [CRÍTICO] M01 ciclo 7: consumo 13.9 kWh
+   [CRÍTICO] M01 ciclo 8: consumo 9.0 kWh
+   [CRÍTICO] M06 ciclo 12: consumo 14.7 kWh
+Simulação: SoC mínimo normal 37 % | tempestade 0 % | com corte de cargas 7 %
+Modelo linear: previsão para módulo de 10 kW, 4 ocupantes, 20 °C = 8.99 kWh (R² teste 0.97)
+Impacto de falha de Energia (grafo/BFS): M02, M03, M04, M05, M06
+
+RECOMENDAÇÃO TÉCNICA:
+ - Sem ação, a bateria chega a nível perigoso em tempestade: adotar corte automático de cargas não críticas.
+ - Agendar manutenção de 4 leituras de sensor inválido e investigar 9 picos de consumo.
+ - Mesmo com corte de cargas a margem é pequena: avaliar ampliar o armazenamento ou a geração.
+ - Validação humana obrigatória; dados de tripulação apenas agregados (privacidade).
+LIMITAÇÕES: dados simulados, modelo linear simples, simulação com carga constante e geração ideal.
